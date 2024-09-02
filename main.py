@@ -7,11 +7,41 @@
 
 import tppparser
 import tppsema
+from myerror import MyError
+from sys import argv
+import os
+
+# Inicializa o manipulador de erros com o arquivo de erros adequado
+error_handler = MyError('MainErrors')
 
 if __name__ == "__main__":
-    tppparser.main()
-    if tppparser.root is not None and tppparser.root.children != ():
-        # Análise semântica
-        tppsema.root = tppparser.root
-        tppsema.checkRules()  # Realiza a análise semântica
-        tppsema.podaArvore()   # Realiza a poda da árvore sintática
+    numParameters = len(argv) # Número de parâmetros
+
+    if numParameters != 2:
+        error = "Número de parâmetros Inválido, verifique a sintaxe. "
+        if numParameters < 2: 
+            error += "Envie um arquivo .tpp."
+            raise IOError(error_handler.newError(False, 'ERR-MAIN-USE'))
+        raise IOError(error_handler.newError(False, 'ERR-MAIN-USE'))
+
+    aux = argv[1].split('.')
+    if aux[-1] != 'tpp':
+        raise IOError(error_handler.newError(False, 'ERR-MAIN-NOT-TPP'))
+    elif not os.path.exists(argv[1]):
+        raise IOError(error_handler.newError(False, 'ERR-MAIN-FILE-NOT-EXISTS'))
+    else:
+        try:
+            tppparser.main()
+        except Exception as e:
+            raise IOError(error_handler.newError(False, 'ERR-MAIN-SYN-ERR'))
+
+        if tppparser.root is not None and tppparser.root.children != ():
+            # Análise semântica
+            try:
+                tppsema.root = tppparser.root
+                tppsema.checkRules()  # Realiza a análise semântica
+            except Exception as e:
+                raise IOError(error_handler.newError(False, 'ERR-MAIN-SEM-ERR'))
+            tppsema.podaArvore()   # Realiza a poda da árvore sintática
+        else:
+            raise IOError(error_handler.newError(False, 'ERR-MAIN-SYN-ERR'))

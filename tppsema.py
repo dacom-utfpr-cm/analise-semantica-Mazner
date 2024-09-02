@@ -39,27 +39,27 @@ root = None
 variablesError = []
 
 # Adiciona uma variável com erro na tabela de erros
-def addVaribleError(name, scope):
+def adicionaErroVariavel(name, scope):
     variablesError.append({
         'name': name,
         'scope': scope
     })
 
 # Verifica se uma variável já tem um erro associado em um escopo específico
-def variableHasError(name, scope):
+def variavelComErro(name, scope):
     for variable in variablesError:
         if variable['name'] == name and variable['scope'] == scope:
             return True
     return False
 
 # Gera a tabela de símbolos a partir da árvore sintática
-def symbolTable():
+def tabelaDeSimbolos():
     res = findall_by_attr(root, "declaracao")
     variables = []
     for p in res:
         item = [node for pre, fill, node in RenderTree(p)]
         if item[1].name == "declaracao_variaveis":
-            variable = variableDeclaration(node1=item[1], scope="global")
+            variable = processaVariavel(node1=item[1], scope="global")
             if declaracaoVariavel(table=variables, name=variable['name'], scope='global'):
                 typeVar = buscaTipo(table=variables, name=variable['name'], scope='global')
                 print(error_handler.newError(False, 'WAR-SEM-VAR-DECL-PREV').format(variable['name'], typeVar))
@@ -88,35 +88,38 @@ def symbolTable():
                 "dimension": 0,
                 "sizeDimension1": 1,
                 "sizeDimension2": 0,
-                "parameters": parametersDeclaration(item)
+                "parameters": declaracaoParams(item)
             }
             if declaracaoVariavel(table=variables, name=name, scope='global'):
                 typeVar = buscaTipo(table=variables, name=name, scope='global')
                 print(error_handler.newError(False, 'WAR-SEM-FUNC-DECL-PREV').format(name, typeVar))
             else:
                 variables.append(variable)
-                functionDeclaration(node1=item[1], scope=name, table=variables)
+                declaracaoFunc(node1=item[1], scope=name, table=variables)
     return variables
 
 # Gera a lista de parâmetros de uma função a partir da árvore sintática
-def parametersDeclaration(node1):
-    parameters = []
+def declaracaoParams(node1):
+    parametros = []
     for item in node1:
         if item.name == 'cabecalho':
-            aux = item.children[2]
-            parametersFound = findall_by_attr(aux, "parametro")
-            for p2 in parametersFound:
-                parameter = {}
-                parameter['type'] = p2.children[0].children[0].children[0].name
-                parameter['name'] = p2.children[2].children[0].name
-                parameters.append(parameter)
-    return parameters
+            # Obtém a lista de parâmetros
+            lista_parametros = findall_by_attr(item.children[2], "parametro")
+            for parametro in lista_parametros:
+                # Extrai o tipo e o nome do parâmetro
+                tipo = parametro.children[0].children[0].children[0].name
+                nome = parametro.children[2].children[0].name
+                parametros.append({
+                    'type': tipo,
+                    'name': nome
+                })
+    return parametros
 
 # Processa a declaração de variáveis dentro do escopo de uma função
-def functionDeclaration(node1, scope, table):
+def declaracaoFunc(node1, scope, table):
     res = findall_by_attr(node1, "declaracao_variaveis")
     for p in res:
-        variable = variableDeclaration(node1=p, scope=scope)
+        variable = processaVariavel(node1=p, scope=scope)
         if declaracaoVariavel(table=table, name=variable['name'], scope=scope):
             typeVar = buscaTipo(table=table, name=variable['name'], scope=scope)
             print(error_handler.newError(False, 'WAR-SEM-VAR-DECL-PREV').format(variable['name'], typeVar))
@@ -124,7 +127,7 @@ def functionDeclaration(node1, scope, table):
             table.append(variable)
 
 # Processa a declaração de uma variável, determinando suas propriedades
-def variableDeclaration(node1, scope):
+def processaVariavel(node1, scope):
     d1 = 1
     d2 = 0
     dimension = 0
@@ -139,8 +142,8 @@ def variableDeclaration(node1, scope):
         elif renderNodeTree[i].name == 'fecha_colchete':
             dimension += 1
             if renderNodeTree[i-2].name == 'NUM_PONTO_FLUTUANTE':
-                if not variableHasError(name, scope):
-                    addVaribleError(name, scope)
+                if not variavelComErro(name, scope):
+                    adicionaErroVariavel(name, scope)
                     print(error_handler.newError(False, 'ERR-SEM-ARRAY-INDEX-NOT-INT').format(name))
             index = renderNodeTree[i-1].name
             if dimension == 2:
@@ -164,57 +167,50 @@ def variableDeclaration(node1, scope):
     }
 
     return variable
+
 # Verifica se a função principal ("principal") existe na tabela de símbolos
 def existeMain(table):
-    for i in range(len(table)):
-        if table[i]['declarationType'] == 'func' and table[i]['name'] == 'principal':
+    for entry in table:
+        if entry['declarationType'] == 'func' and entry['name'] == 'principal':
             return True
     return False
 
 # Verifica se uma variável está declarada na tabela de símbolos dentro de um escopo específico
 def declaracaoVariavel(table, name, scope):
-    for i in range(len(table)):
+    for entry in table:
         # Verifica se a variável está no escopo global ou no escopo especificado
-        if table[i]['name'] == name and (table[i]['scope'] == 'global' or table[i]['scope'] == scope):
+        if entry['name'] == name and (entry['scope'] == 'global' or entry['scope'] == scope):
             return True
-        # Caso não esteja no escopo global, verifica se a variável é um parâmetro de função
-        elif scope != 'global' and table[i]['declarationType'] == 'func':
-            parameters = table[i]['parameters']
-            for j in parameters:
-                if j['name'] == name:
+        # Verifica se a variável é um parâmetro de função no escopo especificado
+        elif scope != 'global' and entry['declarationType'] == 'func':
+            for param in entry['parameters']:
+                if param['name'] == name:
                     return True
     return False
 
 # Retorna o tipo de uma variável ou parâmetro de acordo com a tabela de símbolos
 def buscaTipo(table, name, scope):
-    for i in range(len(table)):
+    for entry in table:
         # Verifica se a variável está no escopo global ou no escopo especificado
-        if table[i]['name'] == name and (table[i]['scope'] == 'global' or table[i]['scope'] == scope):
-            return table[i]['type']
-        # Caso não esteja no escopo global, verifica se a variável é um parâmetro de função
-        elif scope != 'global' and table[i]['declarationType'] == 'func':
-            parameters = table[i]['parameters']
-            for j in parameters:
-                if j['name'] == name:
-                    return table[i]['type']
+        if entry['name'] == name and (entry['scope'] == 'global' or entry['scope'] == scope):
+            return entry['type']
+        # Verifica se a variável é um parâmetro de função no escopo especificado
+        elif scope != 'global' and entry['declarationType'] == 'func':
+            for param in entry['parameters']:
+                if param['name'] == name:
+                    return param['type']
     return None
 
 # Obtém o escopo de uma função a partir de um nó na árvore sintática
 def buscaEscopo(node):
-    anchestors = list(node.anchestors)
-    for i in range(len(anchestors)):
-        if anchestors[i].name == 'cabecalho' and anchestors[i].children[0].name == 'ID':
-            scope = anchestors[i].children[0].children[0].name
-            return scope
+    for ancestor in node.anchestors:
+        if ancestor.name == 'cabecalho' and ancestor.children[0].name == 'ID':
+            return ancestor.children[0].children[0].name
     return 'global'
 
 # Verifica se um valor está sendo usado como índice em uma expressão
 def verificaIndice(node):
-    anchestors = list(node.anchestors)
-    for i in range(len(anchestors)):
-        if anchestors[i].name == 'indice':
-            return True
-    return False
+    return any(ancestor.name == 'indice' for ancestor in node.anchestors)
 
 # Verifica se um valor está sendo usado como argumento em uma função
 def verificaArgumento(node):
@@ -315,8 +311,8 @@ def inicializarVariavel(table, name, scope, node):
     else:
         # Se a variável não está declarada, verifica se não é uma chamada de função antes de reportar erro
         res = findall_by_attr(node, 'chamada_funcao')
-        if not res and not variableHasError(name, scope):
-            addVaribleError(name, scope)
+        if not res and not variavelComErro(name, scope):
+            adicionaErroVariavel(name, scope)
             print(error_handler.newError(False, 'ERR-SEM-VAR-NOT-DECL').format(name))
 
 # Marca a variável como usada na tabela de símbolos
@@ -328,8 +324,8 @@ def variavelUsada(table, name, scope, node):
     else:
         # Se a variável não está declarada, verifica se não é uma chamada de função antes de reportar erro
         res = findall_by_attr(node, 'chamada_funcao')
-        if not res and not variableHasError(name, scope):
-            addVaribleError(name, scope)
+        if not res and not variavelComErro(name, scope):
+            adicionaErroVariavel(name, scope)
             print(error_handler.newError(False, 'ERR-SEM-VAR-NOT-DECL').format(name))
 
 # Verifica todas as variáveis em uso no código, identificando e inicializando ou marcando-as como usadas
@@ -372,7 +368,7 @@ def variavelEmUso(table):
     for i in range(len(table)):
         name = table[i]['name']
         scope = table[i]['scope']
-        if table[i]['declarationType'] == 'var' and table[i]['errors'] <= 0 and not variableHasError(name, scope):
+        if table[i]['declarationType'] == 'var' and table[i]['errors'] <= 0 and not variavelComErro(name, scope):
             if table[i]['init'] == 'N' and table[i]['used'] == 'N':
                 print(error_handler.newError(False, 'WAR-SEM-VAR-DECL-NOT-USED').format(name))
             elif table[i]['init'] == 'Y' and table[i]['used'] == 'N':
@@ -451,7 +447,7 @@ def verificarFuncoes(table):
 
 # Função principal para verificar as regras semânticas do código
 def checkRules():
-    table = symbolTable()
+    table = tabelaDeSimbolos()
     if not existeMain(table):
         print(error_handler.newError(False, 'ERR-SEM-MAIN-NOT-DECL'))
     verificarVariavel(table)
